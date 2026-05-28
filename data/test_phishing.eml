@@ -1,0 +1,26 @@
+From: security-noreply@paypal-account-verify.xyz
+To: user@gmail.com
+Subject: [Action Required] Your PayPal account has been suspended
+Message-ID: <test-phishing-001@paypal-account-verify.xyz>
+Date: Sat, 23 May 2026 07:30:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Dear PayPal Customer,
+
+We have detected unusual activity on your PayPal account and have temporarily suspended access for your security.
+
+To restore access, you must verify your identity immediately:
+
+  Verify Now: http://paypal-account-verify.xyz/login?token=xK92mNpQ
+
+You will need to provide:
+- Full name
+- Date of birth
+- Credit card number and CVV
+- Social Security Number
+
+Failure to verify within 24 hours will result in permanent account closure and any pending funds will be held.
+
+PayPal Security Team
+paypal.com

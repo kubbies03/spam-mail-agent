@@ -1,0 +1,25 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Local databases and logs
+data/spam_agent.db
+logs/
+.codegraph/
+
+# Large training and model artifacts
+docs/df.csv
+docs/22590/
+docs/train/
+models/distilbert_multilingual/
+models/optimizer.pt
+models/rng_state.pth
+models/scheduler.pt
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
