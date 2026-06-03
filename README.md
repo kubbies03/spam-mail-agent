@@ -1,6 +1,6 @@
 # Spam Mail Agent
 
-Production-grade email spam/phishing detection với hybrid ML + agentic architecture, deployed trên Kubernetes với GitOps workflow.
+Production-grade email spam/phishing detection with hybrid ML + agentic architecture, deployed on Kubernetes with GitOps workflow.
 
 [![CI/CD Pipeline](https://github.com/kubbies03/spam-mail-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/kubbies03/spam-mail-agent/actions/workflows/ci.yml)
 
@@ -41,9 +41,9 @@ Email Parser → Duplicate Guard → DistilBERT Classifier (safe/phishing/spam)
                           FastAPI /classify /health /metrics
 ```
 
-### Routing logic
+### Routing Logic
 
-| Điều kiện | Kết quả |
+| Condition | Result |
 |---|---|
 | Classifier confidence < 0.82 | → Agent path |
 | URL suspicious | → Agent path |
@@ -51,9 +51,9 @@ Email Parser → Duplicate Guard → DistilBERT Classifier (safe/phishing/spam)
 | Phishing prob ≥ 0.50 | → Agent path |
 | Spam prob ≥ 0.65 | → Agent path |
 | ≥ 3 keyword signals | → Agent path |
-| Còn lại | → Fast path |
+| Otherwise | → Fast path |
 
-### LangGraph agent (3 nodes)
+### LangGraph Agent (3 nodes)
 
 ```
 classify → check_security → finalize
@@ -71,12 +71,12 @@ classify → check_security → finalize
 git push main
   → GitHub Actions: test → build Docker image → push Docker Hub
   → CI update k8s/deployment.yaml image tag
-  → ArgoCD detect change → sync lên k3s cluster
+  → ArgoCD detect change → sync to k3s cluster
   → Rolling update (zero downtime)
   → Prometheus scrape /metrics → Grafana dashboard
 ```
 
-### Tech stack
+### Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -107,7 +107,7 @@ spam-mail-agent/
 │   ├── schemas.py           # Pydantic contracts
 │   ├── email_fetcher.py     # Gmail IMAP + RFC822 parser
 │   ├── telegram_bot.py      # Alerts + feedback buttons
-│   ├── config.py            # Pydantic Settings từ .env
+│   ├── config.py            # Pydantic Settings from .env
 │   └── monitoring.py        # In-memory metrics + latency timer
 ├── k8s/
 │   ├── namespace.yaml
@@ -134,14 +134,14 @@ spam-mail-agent/
 
 ## API Endpoints
 
-| Method | Path | Mô tả |
+| Method | Path | Description |
 |---|---|---|
-| `POST` | `/classify` | Phân loại email, trả về verdict + risk score |
+| `POST` | `/classify` | Classify email, return verdict + risk score |
 | `GET` | `/health` | Liveness/readiness probe |
 | `GET` | `/metrics` | Prometheus metrics |
-| `GET` | `/analytics` | Thống kê từ database |
+| `GET` | `/analytics` | Statistics from database |
 
-### Ví dụ classify
+### Example
 
 ```bash
 curl -X POST http://<HOST>/classify \
@@ -176,12 +176,12 @@ python -m venv .venv
 source .venv/bin/activate     # Linux/macOS
 
 pip install -r requirements.txt
-cp .env.example .env          # điền credentials
+cp .env.example .env          # fill in credentials
 
-# Chạy API server
+# Run API server
 uvicorn app.main:app --reload --port 8000
 
-# Hoặc Docker Compose
+# Or Docker Compose
 docker compose up --build
 
 # CLI commands
@@ -200,23 +200,23 @@ pytest tests/test_classifier.py
 
 ## Environment Variables
 
-| Variable | Default | Mô tả |
+| Variable | Default | Description |
 |---|---|---|
 | `GMAIL_USER` | — | Gmail address |
 | `GMAIL_APP_PASSWORD` | — | Gmail App Password |
 | `GMAIL_FOLDERS` | `INBOX,[Gmail]/Spam` | Mailboxes to poll |
-| `DATABASE_URL` | `sqlite:///data/spam_agent.db` | SQLite hoặc Postgres |
+| `DATABASE_URL` | `sqlite:///data/spam_agent.db` | SQLite or Postgres |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis cache |
 | `TELEGRAM_BOT_TOKEN` | — | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | — | Telegram chat ID |
 | `GOOGLE_API_KEY` | — | Gemini API key |
 | `GEMINI_MODEL` | `gemini-2.5-flash-lite` | Gemini model |
 | `VIRUSTOTAL_API_KEY` | — | VirusTotal API key |
-| `CLASSIFIER_THRESHOLD` | `0.82` | Confidence tối thiểu để đi fast path |
-| `PHISHING_ESCALATION_THRESHOLD` | `0.50` | Ngưỡng escalate phishing |
-| `SPAM_ESCALATION_THRESHOLD` | `0.65` | Ngưỡng escalate spam |
+| `CLASSIFIER_THRESHOLD` | `0.82` | Minimum confidence for fast path |
+| `PHISHING_ESCALATION_THRESHOLD` | `0.50` | Phishing escalation threshold |
+| `SPAM_ESCALATION_THRESHOLD` | `0.65` | Spam escalation threshold |
 
-Tất cả integrations (Gemini, VirusTotal, Telegram, Redis) đều optional — app tự fallback khi thiếu credentials.
+All integrations (Gemini, VirusTotal, Telegram, Redis) are optional — the app falls back gracefully when credentials are missing.
 
 ---
 
@@ -237,19 +237,19 @@ python scripts/export_onnx.py --model-dir models/distilbert_multilingual
 
 ## Security
 
-- **Prompt injection**: Gemini nhận email content như opaque data, tách biệt `system_instruction`. Body truncate ≤ 1000 chars, subject ≤ 512 chars.
-- **URL analysis**: IP host, URL shortener, TLD blocklist, brand impersonation, non-HTTPS, VirusTotal (max 8 URLs, cooldown 15 phút khi 429).
+- **Prompt injection**: Gemini receives email content as opaque data, separated from `system_instruction`. Body truncated to ≤ 1000 chars, subject ≤ 512 chars.
+- **URL analysis**: IP host, URL shortener, TLD blocklist, brand impersonation, non-HTTPS, VirusTotal (max 8 URLs, 15-minute cooldown on 429).
 - **Sender analysis**: Trusted domain whitelist, known notification domains, WHOIS domain age.
 
 ---
 
 ## Troubleshooting
 
-| Triệu chứng | Xử lý |
+| Symptom | Fix |
 |---|---|
-| Pod `CrashLoopBackOff` | `kubectl logs -n spam-agent <pod>` xem lỗi |
+| Pod `CrashLoopBackOff` | `kubectl logs -n spam-agent <pod>` |
 | ArgoCD `OutOfSync` | `kubectl patch application spam-agent -n argocd --type merge -p '{"operation":{"sync":{"revision":"HEAD"}}}'` |
-| `/health` trả 503 | Đợi 60s (model loading), xem log |
-| Gmail không có email | Bật IMAP trong Gmail settings, dùng App Password |
-| Redis unavailable | App vẫn chạy, LLM cache bị tắt |
-| Gemini rate-limited | Fallback heuristics chạy, cooldown 15 phút |
+| `/health` returns 503 | Wait 60s (model loading), check logs |
+| No Gmail emails | Enable IMAP in Gmail settings, use App Password |
+| Redis unavailable | App still runs, LLM cache disabled |
+| Gemini rate-limited | Fallback heuristics run, 15-minute cooldown |
