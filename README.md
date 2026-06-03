@@ -1,213 +1,255 @@
-# Spam Email Agent
+# Spam Mail Agent
 
-Production-grade spam/phishing detection system with a hybrid ML + agentic architecture. Routes each email through a fast DistilBERT classifier or a LangGraph reasoning agent depending on confidence and risk signals.
+Production-grade email spam/phishing detection với hybrid ML + agentic architecture, deployed trên Kubernetes với GitOps workflow.
+
+[![CI/CD Pipeline](https://github.com/kubbies03/spam-mail-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/kubbies03/spam-mail-agent/actions/workflows/ci.yml)
+
+![Flowchart](docs/Flowchart.png)
+
+---
+
+## Grafana Dashboard
+
+![Grafana Dashboard](docs/Dashboard.png)
+
+---
 
 ## Architecture
 
 ```
-Gmail IMAP (UNSEEN)
-        |
-        v
-Email Parser → Duplicate Guard → DistilBERT Classifier (safe / phishing / spam)
-                                          |
-                                          v
-                                   HybridRouter.should_escalate()
-                                    /                      \
-                              FAST PATH               AGENT PATH (LangGraph)
-                         (high confidence)      classify → check_security → finalize
-                                    \                      /
-                              URL heuristics + VirusTotal + sender domain lookup
-                                          |
-                                          v
+Gmail IMAP
+     │
+     ▼
+Email Parser → Duplicate Guard → DistilBERT Classifier (safe/phishing/spam)
+                                          │
+                                          ▼
+                                 HybridRouter.should_escalate()
+                                  /                        \
+                            FAST PATH                 AGENT PATH
+                         (high confidence)          (LangGraph)
+                                  \               classify → check_security → finalize
+                                   \                        /
+                              URL heuristics + VirusTotal + sender lookup
+                                          │
+                                          ▼
                              Gemini Flash-Lite explanation + Redis cache
-                                          |
-                                          v
-                         SQLite / Postgres log + Telegram alert + metrics
+                                          │
+                                          ▼
+                         SQLite/Postgres + Telegram alert
+                                          │
+                                          ▼
+                          FastAPI /classify /health /metrics
 ```
 
 ### Routing logic
 
-| Condition | Effect |
+| Điều kiện | Kết quả |
 |---|---|
-| Classifier confidence < `CLASSIFIER_THRESHOLD` (0.82) | → Agent path |
-| Any suspicious URL detected | → Agent path |
+| Classifier confidence < 0.82 | → Agent path |
+| URL suspicious | → Agent path |
 | Unknown sender domain | → Agent path |
-| Phishing prob ≥ `PHISHING_ESCALATION_THRESHOLD` (0.50) | → Agent path |
-| Spam prob ≥ `SPAM_ESCALATION_THRESHOLD` (0.65) | → Agent path |
-| ≥ 3 keyword risk signals | → Agent path |
-| Otherwise | → Fast path |
+| Phishing prob ≥ 0.50 | → Agent path |
+| Spam prob ≥ 0.65 | → Agent path |
+| ≥ 3 keyword signals | → Agent path |
+| Còn lại | → Fast path |
 
-### LangGraph agent nodes
+### LangGraph agent (3 nodes)
 
 ```
 classify → check_security → finalize
 ```
 
-- **classify**: DistilBERT 3-class prediction (safe / phishing / spam)
+- **classify**: DistilBERT 3-class prediction
 - **check_security**: URL heuristics + VirusTotal + WHOIS sender age
-- **finalize**: risk aggregation, verdict determination, structured state output
+- **finalize**: risk aggregation, verdict determination
 
-Falls back to sequential execution if LangGraph is unavailable.
+---
+
+## GitOps Deployment
+
+```
+git push main
+  → GitHub Actions: test → build Docker image → push Docker Hub
+  → CI update k8s/deployment.yaml image tag
+  → ArgoCD detect change → sync lên k3s cluster
+  → Rolling update (zero downtime)
+  → Prometheus scrape /metrics → Grafana dashboard
+```
+
+### Tech stack
+
+| Layer | Technology |
+|---|---|
+| App | FastAPI, DistilBERT, LangGraph, Gmail IMAP |
+| Container | Docker, Docker Hub |
+| CI | GitHub Actions |
+| Orchestration | k3s (Kubernetes) |
+| GitOps | ArgoCD |
+| Ingress | Nginx Ingress Controller |
+| Monitoring | Prometheus, Grafana |
+
+---
 
 ## Project Structure
 
 ```
 spam-mail-agent/
+├── app/
+│   └── main.py              # FastAPI: /classify /health /metrics /analytics
 ├── src/
-│   ├── pipeline.py       # Top-level orchestrator (APScheduler + semaphore)
-│   ├── router.py         # HybridRouter: escalation logic + fast path
-│   ├── agent.py          # LangGraph StateGraph agent
-│   ├── classifier.py     # DistilBERT (primary) + SVM/TF-IDF (fallback)
-│   ├── security.py       # URL heuristics, VirusTotal, sender domain lookup
-│   ├── explainer.py      # Gemini Flash-Lite explanation + Redis cache
-│   ├── db.py             # SQLAlchemy 2.0 ORM, auto-migrate
-│   ├── schemas.py        # Pydantic contracts (EmailMessage, ProcessingResult…)
-│   ├── email_fetcher.py  # Gmail IMAP fetcher + RFC822 parser
-│   ├── telegram_bot.py   # Alerts + feedback buttons
-│   ├── config.py         # Pydantic Settings from .env
-│   └── monitoring.py     # In-memory metrics + latency timer
-├── tests/                # pytest suite (49 tests)
-├── scripts/              # Training and export scripts
-├── models/               # distilbert_multilingual/ + svm_tfidf.joblib
-├── data/                 # spam_dataset.csv + spam_agent.db
-├── logs/
-├── .env.example
-├── main.py
-├── requirements.txt
-├── Dockerfile
-└── docker-compose.yml
+│   ├── pipeline.py          # Orchestrator (APScheduler + semaphore)
+│   ├── router.py            # HybridRouter: fast vs agent path
+│   ├── agent.py             # LangGraph StateGraph (3 nodes)
+│   ├── classifier.py        # DistilBERT (primary) + SVM/TF-IDF (fallback)
+│   ├── security.py          # URL heuristics, VirusTotal, sender lookup
+│   ├── explainer.py         # Gemini Flash-Lite + Redis cache
+│   ├── db.py                # SQLAlchemy 2.0, auto-migrate
+│   ├── schemas.py           # Pydantic contracts
+│   ├── email_fetcher.py     # Gmail IMAP + RFC822 parser
+│   ├── telegram_bot.py      # Alerts + feedback buttons
+│   ├── config.py            # Pydantic Settings từ .env
+│   └── monitoring.py        # In-memory metrics + latency timer
+├── k8s/
+│   ├── namespace.yaml
+│   ├── configmap.yaml
+│   ├── pvc.yaml
+│   ├── deployment.yaml      # api (2 replicas) + poller (1) + redis
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   └── monitoring/
+│       ├── servicemonitor.yaml    # Prometheus scrape config
+│       └── grafana-dashboard.yaml # Grafana dashboard
+├── .github/workflows/
+│   └── ci.yml               # GitHub Actions CI/CD
+├── argocd-app.yaml          # ArgoCD Application
+├── tests/                   # pytest (49 tests)
+├── scripts/                 # Training scripts
+├── models/                  # distilbert_multilingual/ + svm_tfidf.joblib
+├── Dockerfile               # Multi-stage build
+├── docker-compose.yml       # Local dev
+└── requirements.txt
 ```
 
-## Setup
+---
+
+## API Endpoints
+
+| Method | Path | Mô tả |
+|---|---|---|
+| `POST` | `/classify` | Phân loại email, trả về verdict + risk score |
+| `GET` | `/health` | Liveness/readiness probe |
+| `GET` | `/metrics` | Prometheus metrics |
+| `GET` | `/analytics` | Thống kê từ database |
+
+### Ví dụ classify
+
+```bash
+curl -X POST http://<HOST>/classify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender": "promo@deals-winner2026.top",
+    "subject": "You won $1000!",
+    "body": "Click here: http://bit.ly/win-free-2026"
+  }'
+```
+
+```json
+{
+  "verdict": "spam",
+  "risk_score": 0.8829,
+  "route": "agent",
+  "confidence": 0.8329,
+  "signals": ["financial lure", "url present"],
+  "recommended_action": "block_or_quarantine",
+  "agent_backend": "langgraph",
+  "latency_ms": 9420
+}
+```
+
+---
+
+## Local Development
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-source .venv/bin/activate       # Linux / macOS
+.venv\Scripts\activate        # Windows
+source .venv/bin/activate     # Linux/macOS
 
 pip install -r requirements.txt
-copy .env.example .env          # then fill in credentials
+cp .env.example .env          # điền credentials
+
+# Chạy API server
+uvicorn app.main:app --reload --port 8000
+
+# Hoặc Docker Compose
+docker compose up --build
+
+# CLI commands
+python main.py classify-text --text "urgent verify password"
+python main.py classify-raw --path data/test_spam.eml
+python main.py poll-once
+python main.py run            # continuous polling
+python main.py analytics
+
+# Tests
+pytest                        # all 49 tests
+pytest tests/test_classifier.py
 ```
+
+---
 
 ## Environment Variables
 
-| Variable | Default | Purpose |
+| Variable | Default | Mô tả |
 |---|---|---|
 | `GMAIL_USER` | — | Gmail address |
-| `GMAIL_APP_PASSWORD` | — | Gmail app password (not account password) |
+| `GMAIL_APP_PASSWORD` | — | Gmail App Password |
 | `GMAIL_FOLDERS` | `INBOX,[Gmail]/Spam` | Mailboxes to poll |
-| `POLL_INTERVAL_SECONDS` | `60` | Polling interval in production mode |
-| `DATABASE_URL` | `sqlite:///data/spam_agent.db` | SQLite or Postgres connection string |
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis for LLM explanation cache |
-| `TELEGRAM_BOT_TOKEN` | — | Telegram bot token for alerts |
-| `TELEGRAM_CHAT_ID` | — | Telegram chat ID for alerts |
+| `DATABASE_URL` | `sqlite:///data/spam_agent.db` | SQLite hoặc Postgres |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis cache |
+| `TELEGRAM_BOT_TOKEN` | — | Telegram bot token |
+| `TELEGRAM_CHAT_ID` | — | Telegram chat ID |
 | `GOOGLE_API_KEY` | — | Gemini API key |
-| `GEMINI_MODEL` | `gemini-2.5-flash-lite` | Gemini model name |
-| `VIRUSTOTAL_API_KEY` | — | VirusTotal URL reputation |
-| `CLASSIFIER_THRESHOLD` | `0.82` | Min confidence to stay on fast path |
-| `PHISHING_ESCALATION_THRESHOLD` | `0.50` | Phishing prob to trigger agent path |
-| `SPAM_ESCALATION_THRESHOLD` | `0.65` | Spam prob to trigger agent path |
-| `DISTILBERT_MODEL_DIR` | `models/distilbert_multilingual` | Fine-tuned model path |
+| `GEMINI_MODEL` | `gemini-2.5-flash-lite` | Gemini model |
+| `VIRUSTOTAL_API_KEY` | — | VirusTotal API key |
+| `CLASSIFIER_THRESHOLD` | `0.82` | Confidence tối thiểu để đi fast path |
+| `PHISHING_ESCALATION_THRESHOLD` | `0.50` | Ngưỡng escalate phishing |
+| `SPAM_ESCALATION_THRESHOLD` | `0.65` | Ngưỡng escalate spam |
 
-All integrations (Gemini, VirusTotal, Telegram, Redis) are optional — the system degrades gracefully with fallback heuristics when credentials are missing.
+Tất cả integrations (Gemini, VirusTotal, Telegram, Redis) đều optional — app tự fallback khi thiếu credentials.
 
-## Commands
-
-```bash
-# Single-shot classification
-python main.py classify-text --text "urgent verify password at http://paypal-login.xyz"
-python main.py classify-raw --path data/sample.eml
-
-# Gmail polling
-python main.py poll-once [--limit 25]   # one batch
-python main.py run                       # continuous (production)
-
-# Utilities
-python main.py self-test                 # smoke test with 2 sample emails
-python main.py analytics                 # print DB stats
-
-# Tests
-pytest                                   # all 49 tests
-pytest tests/test_classifier.py         # single file
-pytest -k "test_name"                   # single test
-```
+---
 
 ## Training
 
-Fine-tune the DistilBERT classifier:
-
 ```bash
+# Fine-tune DistilBERT
 python scripts/train_distilbert.py --csv data/spam_dataset.csv --epochs 2 --batch-size 8
-```
 
-Fallback SVM + TF-IDF model:
+# SVM + TF-IDF fallback
+python scripts/train.py --csv data/spam_dataset.csv
 
-```bash
-python scripts/train.py --csv data/spam_dataset.csv --text-col text --label-col label
-```
-
-Optional ONNX export:
-
-```bash
+# ONNX export
 python scripts/export_onnx.py --model-dir models/distilbert_multilingual
 ```
 
-## Docker Deployment
-
-```bash
-copy .env.example .env
-docker compose up --build -d
-
-# With Postgres
-docker compose --profile postgres up --build -d
-```
-
-Set `DATABASE_URL=postgresql+psycopg://spam_agent:spam_agent_password@postgres:5432/spam_agent` when using Postgres.
-
-## Models
-
-| Model | Path | Notes |
-|---|---|---|
-| DistilBERT (primary) | `models/distilbert_multilingual/` | Fine-tuned 3-class (safe/phishing/spam) |
-| DistilBERT (legacy) | `docs/22590/` | Fallback if primary missing |
-| SVM + TF-IDF | `models/svm_tfidf.joblib` | 2-class, used when DistilBERT unavailable |
-
-## Database
-
-| Table | Purpose |
-|---|---|
-| `email_log` | Append-only processing results (unique on `message_id`) |
-| `feedback_queue` | Telegram feedback ("Confirm spam" / "Mark safe") |
-| `telegram_callback_map` | Maps callback IDs to message IDs |
-| `retraining_queue` | Corrected examples for future retraining |
-| `schema_migrations` | Migration version tracking |
-
-Schema migrations run automatically on startup.
+---
 
 ## Security
 
-- **Prompt injection protection**: Gemini receives email content as labelled opaque data under `system_instruction` separation. Raw headers and full body are never placed in instruction position; content is truncated (subject ≤ 512 chars, body ≤ 1 000 chars).
-- **URL analysis**: IP-host detection, shortener detection, TLD blocklist, brand impersonation pattern, non-HTTPS flag, VirusTotal lookup (max 8 URLs/email, 429 → 15-min cooldown).
-- **Sender analysis**: Trusted domain whitelist, known notification sender list, WHOIS domain age check.
+- **Prompt injection**: Gemini nhận email content như opaque data, tách biệt `system_instruction`. Body truncate ≤ 1000 chars, subject ≤ 512 chars.
+- **URL analysis**: IP host, URL shortener, TLD blocklist, brand impersonation, non-HTTPS, VirusTotal (max 8 URLs, cooldown 15 phút khi 429).
+- **Sender analysis**: Trusted domain whitelist, known notification domains, WHOIS domain age.
 
-## Monitoring
-
-In-memory metrics tracked per run:
-
-- processing count by route (fast / agent)
-- verdict distribution
-- confidence histogram
-- per-email latency (ms)
-
-Use `python main.py analytics` for persisted aggregate stats from the database.
+---
 
 ## Troubleshooting
 
-| Symptom | Action |
+| Triệu chứng | Xử lý |
 |---|---|
-| Gmail returns no emails | Verify IMAP is enabled in Gmail settings and app password is correct; messages must be unread |
-| Redis unavailable | App continues with warning logs; LLM explanations are not cached |
-| Gemini unavailable or rate-limited | Deterministic fallback explanation runs; 15-min cooldown after 429 |
-| VirusTotal rate-limited | URL heuristics still run; 15-min cooldown after 429 |
-| DistilBERT slow on CPU | Reduce batch size during training or use GPU; inference also benefits from GPU |
-| Telegram MarkdownV2 errors | Special characters in subject/sender need escaping for strict Telegram Markdown mode |
+| Pod `CrashLoopBackOff` | `kubectl logs -n spam-agent <pod>` xem lỗi |
+| ArgoCD `OutOfSync` | `kubectl patch application spam-agent -n argocd --type merge -p '{"operation":{"sync":{"revision":"HEAD"}}}'` |
+| `/health` trả 503 | Đợi 60s (model loading), xem log |
+| Gmail không có email | Bật IMAP trong Gmail settings, dùng App Password |
+| Redis unavailable | App vẫn chạy, LLM cache bị tắt |
+| Gemini rate-limited | Fallback heuristics chạy, cooldown 15 phút |

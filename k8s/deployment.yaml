@@ -1,0 +1,191 @@
+---
+# ── API Deployment (FastAPI HTTP server) ─────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spam-agent-api
+  namespace: spam-agent
+  labels:
+    app: spam-agent
+    component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: spam-agent
+      component: api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0          # zero-downtime rolling update
+  template:
+    metadata:
+      labels:
+        app: spam-agent
+        component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+        - name: api
+          image: kubbies03/spam-agent:22411d7
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+          command:
+            - python
+            - -m
+            - uvicorn
+            - app.main:app
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8000"
+            - --workers
+            - "2"
+            - --log-level
+            - info
+          envFrom:
+            - configMapRef:
+                name: spam-agent-config
+            - secretRef:
+                name: spam-agent-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: models
+              mountPath: /app/models
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: spam-agent-data
+        - name: models
+          persistentVolumeClaim:
+            claimName: spam-agent-models
+
+---
+# ── Poller Deployment (background Gmail IMAP polling) ────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spam-agent-poller
+  namespace: spam-agent
+  labels:
+    app: spam-agent
+    component: poller
+spec:
+  replicas: 1                    # exactly one poller to avoid duplicate processing
+  selector:
+    matchLabels:
+      app: spam-agent
+      component: poller
+  template:
+    metadata:
+      labels:
+        app: spam-agent
+        component: poller
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+        - name: poller
+          image: kubbies03/spam-agent:22411d7
+          imagePullPolicy: Always
+          command:
+            - python
+            - main.py
+            - run
+          envFrom:
+            - configMapRef:
+                name: spam-agent-config
+            - secretRef:
+                name: spam-agent-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: models
+              mountPath: /app/models
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1.5Gi"
+              cpu: "1000m"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: spam-agent-data
+        - name: models
+          persistentVolumeClaim:
+            claimName: spam-agent-models
+
+---
+# ── Redis Deployment ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: spam-agent
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args: ["redis-server", "--appendonly", "yes"]
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+      volumes:
+        - name: redis-data
+          emptyDir: {}

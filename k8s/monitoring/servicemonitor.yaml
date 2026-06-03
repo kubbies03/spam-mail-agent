@@ -1,0 +1,27 @@
+# Prometheus ServiceMonitor — tells Prometheus Operator to scrape spam-agent pods.
+# Requires: kube-prometheus-stack (Prometheus Operator) installed in `monitoring` namespace.
+#
+# Install:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm install monitoring prometheus-community/kube-prometheus-stack \
+#     --namespace monitoring --create-namespace
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: spam-agent
+  namespace: monitoring              # must match the namespace Prometheus watches
+  labels:
+    release: monitoring              # must match the Helm release label used by kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - spam-agent
+  selector:
+    matchLabels:
+      app: spam-agent
+      component: api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

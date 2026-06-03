@@ -1,0 +1,114 @@
+# Grafana Dashboard ConfigMap — auto-loaded by Grafana sidecar when label is present.
+# kube-prometheus-stack configures Grafana to watch ConfigMaps with label grafana_dashboard=1.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spam-agent-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  spam-agent.json: |
+    {
+      "title": "Spam Mail Agent",
+      "uid": "spam-agent-dashboard",
+      "tags": ["spam", "ml", "langraph"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Request Rate (req/s)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(rate(spam_requests_total[1m])) by (verdict)",
+              "legendFormat": "{{verdict}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Latency p50 / p95 / p99 (seconds)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(spam_latency_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p50"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(spam_latency_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p95"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(spam_latency_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p99"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Error Rate",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+          "targets": [
+            {
+              "expr": "sum(rate(spam_errors_total[5m]))",
+              "legendFormat": "errors/s"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Active Connections",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+          "targets": [
+            {
+              "expr": "spam_active_connections",
+              "legendFormat": "active"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Verdict Distribution (last 1h)",
+          "type": "piechart",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "targets": [
+            {
+              "expr": "sum(increase(spam_requests_total[1h])) by (verdict)",
+              "legendFormat": "{{verdict}}"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "Route: Fast vs Agent",
+          "type": "piechart",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "targets": [
+            {
+              "expr": "sum(increase(spam_requests_total[1h])) by (route)",
+              "legendFormat": "{{route}}"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "title": "Pod Status",
+          "type": "table",
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 20 },
+          "targets": [
+            {
+              "expr": "kube_pod_status_phase{namespace=\"spam-agent\"}",
+              "legendFormat": "{{pod}} — {{phase}}"
+            }
+          ]
+        }
+      ]
+    }

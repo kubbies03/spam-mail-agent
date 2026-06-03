@@ -1,0 +1,39 @@
+---
+# API Service — exposed to Ingress
+apiVersion: v1
+kind: Service
+metadata:
+  name: spam-agent-api
+  namespace: spam-agent
+  labels:
+    app: spam-agent
+    component: api
+spec:
+  selector:
+    app: spam-agent
+    component: api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+      protocol: TCP
+  type: ClusterIP
+
+---
+# Redis Service — internal only
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: spam-agent
+  labels:
+    app: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+      protocol: TCP
+  type: ClusterIP

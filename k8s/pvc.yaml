@@ -1,0 +1,26 @@
+# Persistent volume for SQLite database and model files.
+# On k3s the default StorageClass (local-path) provisions hostPath volumes.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spam-agent-data
+  namespace: spam-agent
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spam-agent-models
+  namespace: spam-agent
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

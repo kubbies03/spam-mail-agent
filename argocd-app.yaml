@@ -1,0 +1,50 @@
+# ArgoCD Application — apply once on the cluster, then ArgoCD manages everything.
+#
+# Prerequisites:
+#   kubectl create namespace argocd
+#   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#
+# Apply this file:
+#   kubectl apply -f argocd-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spam-agent
+  namespace: argocd
+  # Finalizer ensures ArgoCD cleans up k8s resources when this Application is deleted
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/kubbies03/spam-mail-agent
+    targetRevision: main
+    path: k8s                    # ArgoCD watches everything in k8s/ folder
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: spam-agent
+
+  syncPolicy:
+    # Create the namespace automatically if it doesn't exist
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - ApplyOutOfSyncOnly=true
+    automated:
+      prune: true                # delete resources removed from k8s/
+      selfHeal: true             # revert manual kubectl edits to match Git state
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Health assessment overrides — ArgoCD uses standard health checks by default
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas          # allow HPA to manage replicas without triggering OutOfSync

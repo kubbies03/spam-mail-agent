@@ -1,0 +1,28 @@
+# Nginx Ingress Controller required.
+# Install on k3s: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
+#
+# Replace spam-agent.example.com with your actual domain or VM IP.
+# For local VM testing use: spam-agent.local and add to /etc/hosts on your client.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spam-agent-ingress
+  namespace: spam-agent
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: spam-agent.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: spam-agent-api
+                port:
+                  name: http
